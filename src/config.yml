@@ -1,0 +1,7 @@
+# YouTube Data API V3 Key
+youTubeApiKey: ''
+# Twitch CLIENT-ID
+twitchApiKey: ''
+# How many seconds to wait until streams info updated
+# Recommended: 60
+updateTimeout: 10

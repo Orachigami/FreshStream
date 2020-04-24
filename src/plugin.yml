@@ -1,0 +1,29 @@
+main: main.java.FreshStream
+version: 1.0.0
+name: FreshStream
+description: Plugin for streams notifying
+database: false
+#api-version: [1.12.2, 1.15.2]
+load: POSTWORLD
+author: Orachigami
+commands:
+    stream:
+        description: Main command
+permissions:
+    freshstream.viewer:
+        description: Gives access to list command
+        default: true
+    freshstream.streamer:
+        description: Gives access to add, delete and list commands
+        children:
+            freshstream.viewer: true
+    freshstream.moderator:
+        description: Gives access to delete players streams
+        children:
+            freshstream.viewer: true
+    freshstream.admin:
+        description: Gives access to all comands
+        children:
+            freshstream.viewer: true
+            freshstream.streamer: true
+            freshstream.moderator: true
