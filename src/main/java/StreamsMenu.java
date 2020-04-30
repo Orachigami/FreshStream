@@ -8,6 +8,7 @@ package main.java;
 import main.java.info.YouTubeInfo;
 import main.java.info.TwitchInfo;
 import com.google.gson.Gson;
+import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import java.io.BufferedReader;
@@ -78,23 +79,6 @@ public class StreamsMenu implements Listener {
     }
     
     /**
-     * Returns video info for url
-     * @param url URL to YouTube or Twitch stream
-     */
-    private VideoInfo getVideoInfo(String url) {
-        Pattern twitchPattern = Pattern.compile("^(https?:\\/\\/)?(www\\.)?twitch\\.tv\\/([^&/?\\s]+)", Pattern.CASE_INSENSITIVE);
-        Pattern youtubePattern = Pattern.compile("^(https?:\\/\\/)?((www\\.)?youtube\\.com\\/watch\\?v=|youtu\\.be\\/)([^&/?\\s]+)", Pattern.CASE_INSENSITIVE);
-        Matcher matcher;
-        if ((matcher = twitchPattern.matcher(url)).find()) {
-            String id = matcher.group(3);
-            return getTwitchVideoInfo(id);
-        } else if ((matcher = youtubePattern.matcher(url)).find()) {
-            String id = matcher.group(4);
-            return getYouTubeVideoInfo(id);
-        } else return null;
-    }
-    
-    /**
      * Generates lore according to Player name and VideoInfo
      * @param player Player nickname
      * @param info VideoInfo instance
@@ -122,10 +106,6 @@ public class StreamsMenu implements Listener {
         if (size >= maxSize) return false;
         VideoInfo info = getVideoInfo(url);
         if (info == null) return false;
-        System.err.println("TITLE: " + info.getTitle());
-        System.err.println("VIEWERS: " + info.getConcurrentViewers());
-        System.err.println("LIVE: " + info.isLive());
-        System.err.println("PLATFORM: " + (info.getPlatform() == VideoInfo.PLATFORM.YOUTUBE ? Messages.YOUTUBE : Messages.TWITCH));
         if (!previews.containsKey(player)) {
             ItemStack preview = item.clone();
             preview.setAmount(1);
@@ -134,11 +114,15 @@ public class StreamsMenu implements Listener {
             meta.setLore(generateLore(player, info));
             preview.setItemMeta(meta);
             
-            previews.put(player, preview);
-            urls.put(player, url);
-            inventory.setItem(map[size], preview);
-            slots.put(player, map[size]);
-            size++;
+            for (int i = 0; i < map.length; i++) {
+                if (inventory.getItem(map[i]) != null) continue;
+                previews.put(player, preview);
+                urls.put(player, url);
+                inventory.setItem(map[i], preview);
+                slots.put(player, map[i]);
+                size++;
+                break;
+            }
             return true;
         }
         return false;
@@ -149,17 +133,12 @@ public class StreamsMenu implements Listener {
      * @param player Player nickname who has a stream
      * @return true if removed, false if not found
      */
-    public boolean deleteStream(String player) {
+    public synchronized boolean deleteStream(String player) {
         if (previews.containsKey(player)) {
             previews.remove(player);
             urls.remove(player);
             inventory.setItem(slots.get(player), null);
             slots.remove(player);
-            
-            for (int i = 0; i < map.length - 1; i++) {
-                inventory.setItem(map[i], inventory.getItem(map[i+1]));
-            }
-            inventory.setItem(map[map.length - 1], null);
             size--;
             return true;
         }
@@ -169,12 +148,16 @@ public class StreamsMenu implements Listener {
     /**
      * Updates info in menu
      */
-    public void updateStreams() {
+    public synchronized void updateStreams() {
         Iterator<Map.Entry<String,String>> it = urls.entrySet().iterator();
         while (it.hasNext()) {
             Map.Entry<String,String> pair = it.next();
             VideoInfo info = getVideoInfo(pair.getValue());
             String player = pair.getKey();
+            if (info == null) {
+                deleteStream(player);
+                return;
+            }
             ItemStack preview = previews.get(player);
             ItemMeta meta = preview.getItemMeta();
             meta.setDisplayName(info.getTitle().split("\n")[0]);
@@ -208,51 +191,60 @@ public class StreamsMenu implements Listener {
     public TwitchInfo getTwitchVideoInfo(String id) {
         TwitchInfo info;
         Gson gson = new Gson();
-        try {
-            String url = String.format("https://api.twitch.tv/helix/streams?user_login=%s", id);
-            String response = doGetRequest(url, "Client-ID", twitchApiKey);
-            JsonObject jo = gson.fromJson(response, JsonElement.class).getAsJsonObject();
-            info = gson.fromJson(jo.getAsJsonArray("data").get(0), TwitchInfo.class);
-            url = String.format("https://api.twitch.tv/helix/users/follows?to_id=%s", info.user_id);
-            response = doGetRequest(url, "Client-ID", twitchApiKey);
-            jo = gson.fromJson(response, JsonElement.class).getAsJsonObject();
-            info.followersCount = jo.get("total").getAsString();
-            return info;
-        } catch (NullPointerException e) {
-            e.printStackTrace(); 
-        }
-        return null;
+        String url = String.format("https://api.twitch.tv/helix/streams?user_login=%s", id);
+        String response = doGetRequest(url, "Client-ID", twitchApiKey);
+        JsonObject jo = gson.fromJson(response, JsonElement.class).getAsJsonObject();
+        JsonArray data = jo.getAsJsonArray("data");
+        if (data.size() == 0) return null;
+        info = gson.fromJson(data.get(0), TwitchInfo.class);
+        url = String.format("https://api.twitch.tv/helix/users/follows?to_id=%s", info.user_id);
+        response = doGetRequest(url, "Client-ID", twitchApiKey);
+        jo = gson.fromJson(response, JsonElement.class).getAsJsonObject();
+        info.followersCount = jo.get("total").getAsString();
+        return info;
     }
     
     public YouTubeInfo getYouTubeVideoInfo(String id) {
         YouTubeInfo info;
         Gson gson = new Gson();
-        try {
-            String url = String.format("https://www.googleapis.com/youtube/v3/videos?id=%s&key=%s&part=snippet,liveStreamingDetails,statistics", id, youtubeApiKey);
-            String response = doGetRequest(url, null, null);
-            JsonObject jo = gson.fromJson(response, JsonElement.class).getAsJsonObject();
-            info = gson.fromJson(jo.getAsJsonArray("items").get(0), YouTubeInfo.class);
-            url = String.format("https://www.googleapis.com/youtube/v3/channels?id=%s&key=%s&part=statistics", info.snippet.channelId, youtubeApiKey);
-            response = doGetRequest(url, null, null);
-            jo = gson.fromJson(response, JsonElement.class).getAsJsonObject();
-            info.statistics = gson.fromJson(jo.getAsJsonArray("items").get(0).getAsJsonObject().get("statistics"), YouTubeInfo.Statistics.class);
-            return info;
-        } catch (NullPointerException e) {
-            e.printStackTrace(); 
-        }
-        return null;
+        String url = String.format("https://www.googleapis.com/youtube/v3/videos?id=%s&key=%s&part=snippet,liveStreamingDetails,statistics", id, youtubeApiKey);
+        String response = doGetRequest(url, null, null);
+        JsonObject jo = gson.fromJson(response, JsonElement.class).getAsJsonObject();
+        JsonArray items = jo.getAsJsonArray("items");
+        if (items.size() == 0) return null;
+        info = gson.fromJson(items.get(0), YouTubeInfo.class);
+        url = String.format("https://www.googleapis.com/youtube/v3/channels?id=%s&key=%s&part=statistics", info.snippet.channelId, youtubeApiKey);
+        response = doGetRequest(url, null, null);
+        jo = gson.fromJson(response, JsonElement.class).getAsJsonObject();
+        info.statistics = gson.fromJson(jo.getAsJsonArray("items").get(0).getAsJsonObject().get("statistics"), YouTubeInfo.Statistics.class);
+        return info;
+    }
+    
+    /**
+     * Returns video info for url
+     * @param url URL to YouTube or Twitch stream
+     */
+    private VideoInfo getVideoInfo(String url) {
+        Pattern twitchPattern = Pattern.compile("^(https?:\\/\\/)?(www\\.)?twitch\\.tv\\/([^&/?\\s]+)", Pattern.CASE_INSENSITIVE);
+        Pattern youtubePattern = Pattern.compile("^(https?:\\/\\/)?((www\\.)?youtube\\.com\\/watch\\?v=|youtu\\.be\\/)([^&/?\\s]+)", Pattern.CASE_INSENSITIVE);
+        Matcher matcher;
+        if ((matcher = twitchPattern.matcher(url)).find()) {
+            String id = matcher.group(3);
+            return getTwitchVideoInfo(id);
+        } else if ((matcher = youtubePattern.matcher(url)).find()) {
+            String id = matcher.group(4);
+            return getYouTubeVideoInfo(id);
+        } else return null;
     }
     
     @EventHandler
     public void InventoryClick(InventoryClickEvent e){
-        if(e.getInventory().equals(inventory)){
-            System.out.println(inventory.getItem(e.getRawSlot()));
+        if(inventory.equals(e.getInventory())){
             Player player = (Player)e.getWhoClicked();  
             e.setCancelled(true);
             if(e.getCurrentItem() == null){
                 return;
             }
-            
             int slot = e.getRawSlot();
             String playerName = null;
             for (Map.Entry<String, Integer> entry : slots.entrySet()) {
