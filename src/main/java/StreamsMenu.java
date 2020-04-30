@@ -104,6 +104,7 @@ public class StreamsMenu implements Listener {
      */
     public boolean addStream(ItemStack item, String player, String url) {
         if (size >= maxSize) return false;
+        if (!url.startsWith("http")) url = "https://" + url;
         VideoInfo info = getVideoInfo(url);
         if (info == null) return false;
         if (!previews.containsKey(player)) {
@@ -121,9 +122,19 @@ public class StreamsMenu implements Listener {
                 inventory.setItem(map[i], preview);
                 slots.put(player, map[i]);
                 size++;
-                break;
+                JSONMessage.create(Messages.BROADCAST.get((int)(Messages.BROADCAST.size() * Math.random()))
+                        .replaceAll("%player%", player)
+                        .replaceAll("%viewers%", info.getConcurrentViewers().equals("-1") ? "0" : info.getConcurrentViewers())
+                        .replaceAll("%status%", ""+info.isLive())
+                        .replaceAll("%started%", info.getStartTime())
+                        .replaceAll("%subscribers%", info.getSubscribersCount())
+                        .replaceAll("%platform%", info.getPlatform() == VideoInfo.PLATFORM.YOUTUBE ? Messages.YOUTUBE : Messages.TWITCH ))
+                            .color(ChatColor.GREEN)
+                            .tooltip(Messages.STREAM_INVITE_TOOLTIP)
+                            .openURL(url)
+                            .send(Bukkit.getOnlinePlayers().toArray(new Player[Bukkit.getOnlinePlayers().size()]));
+                return true;
             }
-            return true;
         }
         return false;
     }
@@ -255,7 +266,6 @@ public class StreamsMenu implements Listener {
             ItemStack item = e.getCurrentItem();
             if (item.hasItemMeta()) {
                 String url = urls.get(playerName);
-                if (!url.startsWith("http")) url = "https://" + url;
                 JSONMessage.create(Messages.STREAM_INVITE)
                         .color(ChatColor.GREEN)
                         .tooltip(Messages.STREAM_INVITE_TOOLTIP)

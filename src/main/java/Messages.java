@@ -5,6 +5,8 @@
  */
 package main.java;
 
+import java.util.List;
+
 /**
  *
  * @author Orachigami
@@ -25,4 +27,5 @@ public final class Messages {
     public static String NOT_ENOUGH_ARGUMENTS;
     public static String NOT_SETUP;
     public static String BAD_URL;
+    public static List<String> BROADCAST;
 }

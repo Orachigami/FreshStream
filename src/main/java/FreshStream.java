@@ -54,6 +54,7 @@ public class FreshStream extends JavaPlugin {
         Messages.NOT_ENOUGH_ARGUMENTS = messages.getString("notEnoughArguments");
         Messages.BAD_URL = messages.getString("badUrl");
         Messages.NOT_SETUP = messages.getString("notSetup");
+        Messages.BROADCAST = (List<String>)messages.getList("broadcast");
         
         String youTubeApiKey = getConfig().getString("youTubeApiKey");
         String twitchApiKey = getConfig().getString("twitchApiKey");
@@ -135,6 +136,9 @@ public class FreshStream extends JavaPlugin {
                 reloadConfig();
                 onEnable();
                 sender.sendMessage(Messages.RELOADED);
+                break;
+            case "version":
+                sender.sendMessage(getDescription().getVersion());
                 break;
             default: sender.sendMessage(Messages.HELP); break;
         }
